@@ -1,0 +1,4 @@
+wandb:
+  project: kmscale-evaluation # Add wandb project name
+  entity: lilli-freischem # Add wandb organization -- is this correct?
+  mode: online # Decide if online logging

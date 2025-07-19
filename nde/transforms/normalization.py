@@ -112,7 +112,7 @@ class BatchNorm(transforms.Transform):
         outputs = self.weight * ((inputs - mean) / torch.sqrt((var + self.eps))) + self.bias
 
         logabsdet_ = torch.log(self.weight) - 0.5 * torch.log(var + self.eps)
-        logabsdet = torch.sum(logabsdet_) * torch.ones(inputs.shape[0])
+        logabsdet = torch.sum(logabsdet_) * torch.ones(inputs.shape[0], device=inputs.device)
 
         return outputs, logabsdet
 
@@ -126,7 +126,7 @@ class BatchNorm(transforms.Transform):
         outputs = torch.sqrt(self.running_var + self.eps) * ((inputs - self.bias) / self.weight) + self.running_mean
 
         logabsdet_ = - torch.log(self.weight) + 0.5 * torch.log(self.running_var + self.eps)
-        logabsdet = torch.sum(logabsdet_) * torch.ones(inputs.shape[0])
+        logabsdet = torch.sum(logabsdet_) * torch.ones(inputs.shape[0], device=inputs.device)
 
         return outputs, logabsdet
 
@@ -170,10 +170,10 @@ class ActNorm(transforms.Transform):
 
         if inputs.dim() == 4:
             batch_size, _, h, w = inputs.shape
-            logabsdet = h * w * torch.sum(self.log_scale) * torch.ones(batch_size)
+            logabsdet = h * w * torch.sum(self.log_scale) * torch.ones(batch_size, device=inputs.device)
         else:
             batch_size,_ = inputs.shape
-            logabsdet = torch.sum(self.log_scale) * torch.ones(batch_size)
+            logabsdet = torch.sum(self.log_scale) * torch.ones(batch_size, device=inputs.device)
 
         return outputs, logabsdet
 
@@ -186,10 +186,10 @@ class ActNorm(transforms.Transform):
 
         if inputs.dim() == 4:
             batch_size, _, h, w = inputs.shape
-            logabsdet = - h * w * torch.sum(self.log_scale) * torch.ones(batch_size)
+            logabsdet = - h * w * torch.sum(self.log_scale) * torch.ones(batch_size, device=inputs.device)
         else:
             batch_size, _ = inputs.shape
-            logabsdet = - torch.sum(self.log_scale) * torch.ones(batch_size)
+            logabsdet = - torch.sum(self.log_scale) * torch.ones(batch_size, device=inputs.device)
 
         return outputs, logabsdet
 

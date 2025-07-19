@@ -664,6 +664,8 @@ def main(seed, _log):
 
     train_dataset, val_dataset, (c, h, w) = get_train_valid_data()
 
+    # TODO change to use our datasets
+
     _log.info('Training dataset size: {}'.format(len(train_dataset)))
 
     if val_dataset is None:

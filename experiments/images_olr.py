@@ -9,7 +9,7 @@ import utils
 import nn as nn_
 
 import matplotlib
-matplotlib.use('Agg')
+# matplotlib.use('Agg')
 
 from loguru import logger
 
@@ -21,6 +21,35 @@ from experiments.autils import Conv2dSameSize
 import matplotlib.pyplot as plt
 from torchvision.utils import make_grid
 import optim
+
+
+
+class Preprocess:
+    def __init__(self, num_bits):
+        self.num_bits = num_bits
+        self.num_bins = 2 ** self.num_bits
+
+    def __call__(self, img):
+        if img.dtype == torch.uint8:
+            img = img.float() # Already in [0,255]
+        else:
+            img = img * 255. # [0,1] -> [0,255]
+
+        if self.num_bits != 8:
+            img = torch.floor(img / 2 ** (8 - self.num_bits)) # [0, 255] -> [0, num_bins - 1]
+
+        # Uniform dequantization.
+        img = img + torch.rand_like(img)
+
+        return img
+
+    def inverse(self, inputs):
+        # Discretize the pixel values.
+        inputs = torch.floor(inputs)
+        # Convert to a float in [0, 1].
+        inputs = inputs * (256 / self.num_bins) / 255
+        inputs = torch.clamp(inputs, 0, 1)
+        return inputs
 
 
 class ConvNet(nn.Module):
@@ -191,7 +220,7 @@ def create_flow(
     c, h, w,
     create_transform_kwargs: dict,
     transform_step_kwargs: dict,
-    flow_checkpoint=None, 
+    # flow_checkpoint=None, 
     _log=logger,
     ):
     distribution = distributions.StandardNormal((c * h * w,))
@@ -206,9 +235,9 @@ def create_flow(
     _log.info('There are {} trainable parameters in this model.'.format(
         utils.get_num_parameters(flow)))
 
-    if flow_checkpoint is not None:
-        flow.load_state_dict(torch.load(flow_checkpoint))
-        _log.info('Flow state loaded from {}'.format(flow_checkpoint))
+    # if flow_checkpoint is not None:
+    #     flow.load_state_dict(torch.load(flow_checkpoint))
+    #     _log.info('Flow state loaded from {}'.format(flow_checkpoint))
 
     return flow
 
@@ -242,7 +271,8 @@ DEFAULT_TRANSFORM_STEP_KWARGS = {
 class Flow(LightningModule):
     def __init__(
         self,
-        image_dims: tuple = (1, 64, 64),
+        dataset_dims: tuple = (1, 64, 64),
+        data_key: str = "image",
         create_transform_kwargs: dict = DEFAULT_TRANSFORM_KWARGS,
         transform_step_kwargs: dict = DEFAULT_TRANSFORM_STEP_KWARGS,
         num_bits: int = 8,
@@ -250,12 +280,16 @@ class Flow(LightningModule):
         eta_min: float = 0.0,
         cosine_annealing: bool = True,
         temperatures: list = [0.5, 0.75, 1.0],
+        warmup_fraction: float = 0.0,
+        sample_interval: int = 1,
     ):
 
         super().__init__()
-        c, h, w = image_dims
+        self.dataset_dims = dataset_dims
+        self.data_key = data_key
+
         self.flow = create_flow(
-            c, h, w, 
+            *self.dataset_dims,
             create_transform_kwargs=create_transform_kwargs,
             transform_step_kwargs=transform_step_kwargs,
             )
@@ -264,22 +298,24 @@ class Flow(LightningModule):
         self.eta_min = eta_min
         self.cosine_annealing = cosine_annealing
         self.temperatures = temperatures
+        self.warmup_fraction = warmup_fraction
+        self.sample_interval = sample_interval
     
     def forward(self, x):
         return self.flow.log_prob(x)
 
     def training_step(self, batch, batch_idx):
-        x, _ = batch
+        x = batch[self.data_key]
         log_prob = self.flow.log_prob(x)
         loss = -autils.nats_to_bits_per_dim(log_prob.mean(), *self.dataset_dims)
-        self.log("train_loss", loss)
+        self.log("train/loss", loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        x, _ = batch
+        x = batch[self.data_key]
         log_prob = self.flow.log_prob(x)
         val_loss = -autils.nats_to_bits_per_dim(log_prob.mean(), *self.dataset_dims)
-        self.log("val_loss", val_loss)
+        self.log("val/loss", val_loss)
         return val_loss
 
     def configure_optimizers(self):
@@ -311,7 +347,7 @@ class Flow(LightningModule):
             for temperature, ax in zip(self.temperatures, axs.flat):
                 noise = self.flow._distribution.sample(64) * temperature
                 samples, _ = self.flow._transform.inverse(noise)
-                # samples = Preprocess(self.num_bits).inverse(samples) # TODO implement Preprocess for OLR
+                samples = Preprocess(self.num_bits).inverse(samples) # TODO implement Preprocess for OLR
                 autils.imshow(make_grid(samples, nrow=8), ax)
                 ax.set_title(f'T={temperature:.2f}')
             

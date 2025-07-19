@@ -24,3 +24,9 @@ from .typechecks import is_power_of_two
 
 from .io import get_data_root
 from .io import NoDataRootError
+
+from .hydrautils import (
+    find_hydra_run_path,
+    load_ckpt_from_hydra_run,
+    print_checksum_of_model
+)

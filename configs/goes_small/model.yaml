@@ -1,0 +1,5 @@
+model:
+  _target_: experiments.images_olr.Flow
+  dataset_dims: [1, 64, 64]
+  data_key: image
+

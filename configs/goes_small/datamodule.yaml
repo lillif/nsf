@@ -1,0 +1,15 @@
+dataloader:
+  _target_: olr_data.OlrDataModule
+  data_dir: /work/bb1153/b382145/computer_vision/data/healpix/goes/whole_region/
+  dataset_kwargs:
+    transforms:
+      _target_: olr_data.OlrTransform
+      normalise_method: minmax
+      normalise_path: /work/bb1153/b382145/computer_vision/data/healpix/minmax_tropics_first15dayseachmonth_5hourly_all3datasets.json
+      fill_nan: True
+      crop_size: 64
+      random_crop: True
+  batch_size: 32 ## experiment with this
+  num_workers: 1 ## experiment with this
+  pin_memory: True # puts fetched data Tensors in pinned memory, enabling faster data transfer to CUDA-enabled GPU's
+  prefetch_factor: 4 # number of batches loaded in advance by each worker
