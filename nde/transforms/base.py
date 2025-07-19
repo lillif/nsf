@@ -2,7 +2,6 @@
 
 import numpy as np
 import torch
-
 from torch import nn
 
 import utils
@@ -10,12 +9,10 @@ import utils
 
 class InverseNotAvailable(Exception):
     """Exception to be thrown when a transform does not have an inverse."""
-    pass
 
 
 class InputOutsideDomain(Exception):
     """Exception to be thrown when the input to a transform is not within its domain."""
-    pass
 
 
 class Transform(nn.Module):
@@ -44,9 +41,11 @@ class CompositeTransform(Transform):
     def _cascade(inputs, funcs, context):
         batch_size = inputs.shape[0]
         outputs = inputs
-        total_logabsdet = torch.zeros(batch_size)
+        total_logabsdet = torch.zeros(batch_size, device=inputs.device)
         for func in funcs:
             outputs, logabsdet = func(outputs, context)
+            if logabsdet.device != total_logabsdet.device:
+                logabsdet = logabsdet.to(total_logabsdet.device)
             total_logabsdet += logabsdet
         return outputs, total_logabsdet
 
@@ -79,7 +78,7 @@ class MultiscaleCompositeTransform(Transform):
             split_dim: dimension along which to split.
         """
         if not utils.is_positive_int(split_dim):
-            raise TypeError('Split dimension must be a positive integer.')
+            raise TypeError("Split dimension must be a positive integer.")
 
         super().__init__()
         self._transforms = nn.ModuleList()
@@ -102,19 +101,24 @@ class MultiscaleCompositeTransform(Transform):
 
         if len(self._transforms) == self._num_transforms:
             raise RuntimeError(
-                'Adding more than {} transforms is not allowed.'.format(self._num_transforms))
+                "Adding more than {} transforms is not allowed.".format(
+                    self._num_transforms
+                )
+            )
 
         if (self._split_dim - 1) >= len(transform_output_shape):
-            raise ValueError('No split_dim in output shape')
+            raise ValueError("No split_dim in output shape")
 
         if transform_output_shape[self._split_dim - 1] < 2:
-            raise ValueError('Size of dimension {} must be at least 2.'.format(self._split_dim))
+            raise ValueError(f"Size of dimension {self._split_dim} must be at least 2.")
 
         self._transforms.append(transform)
 
         if len(self._transforms) != self._num_transforms:  # Unless last transform.
             output_shape = list(transform_output_shape)
-            output_shape[self._split_dim - 1] = (output_shape[self._split_dim - 1] + 1) // 2
+            output_shape[self._split_dim - 1] = (
+                output_shape[self._split_dim - 1] + 1
+            ) // 2
             output_shape = tuple(output_shape)
 
             hidden_shape = list(transform_output_shape)
@@ -130,10 +134,12 @@ class MultiscaleCompositeTransform(Transform):
 
     def forward(self, inputs, context=None):
         if self._split_dim >= inputs.dim():
-            raise ValueError('No split_dim in inputs.')
+            raise ValueError("No split_dim in inputs.")
         if self._num_transforms != len(self._transforms):
-            raise RuntimeError('Expecting exactly {} transform(s) '
-                               'to be added.'.format(self._num_transforms))
+            raise RuntimeError(
+                "Expecting exactly {} transform(s) "
+                "to be added.".format(self._num_transforms)
+            )
 
         batch_size = inputs.shape[0]
 
@@ -142,9 +148,9 @@ class MultiscaleCompositeTransform(Transform):
 
             for i, transform in enumerate(self._transforms[:-1]):
                 transform_outputs, logabsdet = transform(hiddens, context)
-                outputs, hiddens = torch.chunk(transform_outputs,
-                                               chunks=2,
-                                               dim=self._split_dim)
+                outputs, hiddens = torch.chunk(
+                    transform_outputs, chunks=2, dim=self._split_dim
+                )
                 assert outputs.shape[1:] == self._output_shapes[i]
                 yield outputs, logabsdet
 
@@ -153,7 +159,7 @@ class MultiscaleCompositeTransform(Transform):
             yield outputs, logabsdet
 
         all_outputs = []
-        total_logabsdet = torch.zeros(batch_size)
+        total_logabsdet = torch.zeros(batch_size, device=inputs.device)
 
         for outputs, logabsdet in cascade():
             all_outputs.append(outputs.reshape(batch_size, -1))
@@ -164,10 +170,12 @@ class MultiscaleCompositeTransform(Transform):
 
     def inverse(self, inputs, context=None):
         if inputs.dim() != 2:
-            raise ValueError('Expecting NxD inputs')
+            raise ValueError("Expecting NxD inputs")
         if self._num_transforms != len(self._transforms):
-            raise RuntimeError('Expecting exactly {} transform(s) '
-                               'to be added.'.format(self._num_transforms))
+            raise RuntimeError(
+                "Expecting exactly {} transform(s) "
+                "to be added.".format(self._num_transforms)
+            )
 
         batch_size = inputs.shape[0]
 
@@ -178,17 +186,19 @@ class MultiscaleCompositeTransform(Transform):
 
         split_inputs = []
         for i in range(len(self._output_shapes)):
-            flat_input = inputs[:, split_indices[i]:split_indices[i+1]]
+            flat_input = inputs[:, split_indices[i] : split_indices[i + 1]]
             split_inputs.append(flat_input.view(-1, *self._output_shapes[i]))
         rev_split_inputs = split_inputs[::-1]
 
-        total_logabsdet = torch.zeros(batch_size)
+        total_logabsdet = torch.zeros(batch_size, device=inputs.device)
 
         # We don't do the splitting for the last (here first) transform.
         hiddens, logabsdet = rev_inv_transforms[0](rev_split_inputs[0], context)
         total_logabsdet += logabsdet
 
-        for inv_transform, input_chunk in zip(rev_inv_transforms[1:], rev_split_inputs[1:]):
+        for inv_transform, input_chunk in zip(
+            rev_inv_transforms[1:], rev_split_inputs[1:]
+        ):
             tmp_concat_inputs = torch.cat([input_chunk, hiddens], dim=self._split_dim)
             hiddens, logabsdet = inv_transform(tmp_concat_inputs, context)
             total_logabsdet += logabsdet

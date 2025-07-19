@@ -2,10 +2,11 @@ from lightning import LightningDataModule
 from loguru import logger
 from torch.utils.data import DataLoader
 
+from constants import SPLITS_DICT
+
 from .olr_dataset import OlrDataset
 from .olr_utils import get_list_olrfiles, get_split
 
-from constants import SPLITS_DICT
 
 class OlrDataModule(LightningDataModule):
     def __init__(

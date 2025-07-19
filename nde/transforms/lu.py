@@ -1,8 +1,8 @@
 import numpy as np
 import torch
-
 from torch import nn
-from torch.nn import functional as F, init
+from torch.nn import functional as F
+from torch.nn import init
 
 from nde.transforms.linear import Linear
 
@@ -45,7 +45,7 @@ class LULinear(Linear):
         lower = self.lower_entries.new_zeros(self.features, self.features)
         lower[self.lower_indices[0], self.lower_indices[1]] = self.lower_entries
         # The diagonal of L is taken to be all-ones without loss of generality.
-        lower[self.diag_indices[0], self.diag_indices[1]] = 1.
+        lower[self.diag_indices[0], self.diag_indices[1]] = 1.0
 
         upper = self.upper_entries.new_zeros(self.features, self.features)
         upper[self.upper_indices[0], self.upper_indices[1]] = self.upper_entries
@@ -67,6 +67,25 @@ class LULinear(Linear):
         logabsdet = self.logabsdet() * inputs.new_ones(outputs.shape[0])
         return outputs, logabsdet
 
+    # def inverse_no_cache(self, inputs):
+    #     """Cost:
+    #         output = O(D^2N)
+    #         logabsdet = O(D)
+    #     where:
+    #         D = num of features
+    #         N = num of inputs
+    #     """
+    #     lower, upper = self._create_lower_upper()
+    #     outputs = inputs - self.bias
+    #     outputs, _ = torch.triangular_solve(outputs.t(), lower, upper=False, unitriangular=True)
+    #     outputs, _ = torch.triangular_solve(outputs, upper, upper=True, unitriangular=False)
+    #     outputs = outputs.t()
+
+    #     logabsdet = -self.logabsdet()
+    #     logabsdet = logabsdet * inputs.new_ones(outputs.shape[0])
+
+    #     return outputs, logabsdet
+
     def inverse_no_cache(self, inputs):
         """Cost:
             output = O(D^2N)
@@ -75,13 +94,22 @@ class LULinear(Linear):
             D = num of features
             N = num of inputs
         """
+        device = inputs.device
         lower, upper = self._create_lower_upper()
-        outputs = inputs - self.bias
-        outputs, _ = torch.triangular_solve(outputs.t(), lower, upper=False, unitriangular=True)
-        outputs, _ = torch.triangular_solve(outputs, upper, upper=True, unitriangular=False)
+        lower = lower.to(device)
+        upper = upper.to(device)
+        bias = self.bias.to(device)
+
+        outputs = inputs - bias
+        outputs, _ = torch.triangular_solve(
+            outputs.t(), lower, upper=False, unitriangular=True
+        )
+        outputs, _ = torch.triangular_solve(
+            outputs, upper, upper=True, unitriangular=False
+        )
         outputs = outputs.t()
 
-        logabsdet = -self.logabsdet()
+        logabsdet = -self.logabsdet().to(device)
         logabsdet = logabsdet * inputs.new_ones(outputs.shape[0])
 
         return outputs, logabsdet
@@ -104,7 +132,9 @@ class LULinear(Linear):
         lower, upper = self._create_lower_upper()
         identity = torch.eye(self.features, self.features)
         lower_inverse, _ = torch.trtrs(identity, lower, upper=False, unitriangular=True)
-        weight_inverse, _ = torch.trtrs(lower_inverse, upper, upper=True, unitriangular=False)
+        weight_inverse, _ = torch.trtrs(
+            lower_inverse, upper, upper=True, unitriangular=False
+        )
         return weight_inverse
 
     @property

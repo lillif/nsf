@@ -10,6 +10,6 @@ dataloader:
       crop_size: 64
       random_crop: True
   batch_size: 32 ## experiment with this
-  num_workers: 1 ## experiment with this
+  num_workers: 4 ## experiment with this
   pin_memory: True # puts fetched data Tensors in pinned memory, enabling faster data transfer to CUDA-enabled GPU's
   prefetch_factor: 4 # number of batches loaded in advance by each worker

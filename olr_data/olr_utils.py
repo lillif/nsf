@@ -4,6 +4,7 @@ from datetime import datetime
 import pandas as pd
 from loguru import logger
 
+
 def get_list_olrfiles(
     data_path: str,
     ext: str = "nc",
@@ -13,7 +14,6 @@ def get_list_olrfiles(
     """
     file_list = glob.glob(f"{data_path}/*_OLR*{ext}")
     return sorted(file_list)
-
 
 
 def get_dates_from_files(filenames: list[str]) -> list[datetime]:
